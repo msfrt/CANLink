@@ -143,4 +143,4 @@ Security
 Stat
 
 # encryption files
-/ssl
+ssl/
