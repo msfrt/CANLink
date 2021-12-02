@@ -98,14 +98,47 @@
                 <input id="driverMessage8" class="text-center form-control px-1" maxlength="1"  style="max-width: 2em;">
               </div>
               <div class="col-auto">
-                <input type="submit" id="driverMessageSend" class="btn btn-primary form-control"></button>
+                <button id="driverMessageSend" class="btn btn-primary form-control">Send</button>
               </div>
             </div> <!-- end message input characters -->
             
 
             <div class="">
-              <h3 class="h5 mb-1">Flash LEDs</h3>
+              <h3 class="h5 mt-3">Flash LEDs</h3>
             </div>
+
+            <div class="row gx-1 align-items-center led-group"> <!-- color buttons -->
+              <div class="col-auto">
+                <input type="radio" class="btn-check" name="led-btn" id="led-red" autocomplete="off">
+                <label class="btn btn-outline-danger" for="led-red">&#x25A0;</label>
+              </div>
+
+              <div class="col-auto">
+                <input type="radio" class="btn-check" name="led-btn" id="led-yellow" autocomplete="off">
+                <label class="btn btn-outline-warning" for="led-yellow">&#x25A0;</label>
+              </div>
+
+              <div class="col-auto">
+                <input type="radio" class="btn-check" name="led-btn" id="led-green" autocomplete="off">
+                <label class="btn btn-outline-success" for="led-green">&#x25A0;</label>
+              </div>
+
+              <div class="col-auto">
+                <input type="radio" class="btn-check" name="led-btn" id="led-blue" autocomplete="off">
+                <label class="btn btn-outline-info" for="led-blue">&#x25A0;</label>
+              </div>
+
+              <div class="col-auto">
+                <input type="radio" class="btn-check" name="led-btn" id="led-white" autocomplete="off">
+                <label class="btn btn-outline-secondary" for="led-white">&#x25A0;</label>
+              </div>
+
+              <div class="col-auto">
+                <button id="driverLEDSend" class="btn btn-primary form-control">Send</button>
+              </div>
+            
+            </div> <!-- end color buttons -->
+
 
           </div> <!-- end data pod 1 -->
 
@@ -128,7 +161,8 @@
         for (let i = 1; i < 9; i++){
           $('#driverMessage' + i).keypress(function() {
             var self = $(this);
-            //wait until character is inserted
+            self.val(''); // clears value
+            // wait until character is inserted
             setTimeout(function() {
               if (self.val().length > 0) {
                 $('#driverMessage' + (i+1)).focus();  // moves the cursor
@@ -155,19 +189,68 @@
         $(document).ready(function(){
           var socket = io();
 
+          // when the page is first loaded and connects to the server
           socket.on('connect', function() {
-              socket.emit('sr22_connected', {data: 'I\'m connected!'});
+              socket.emit('sr22_connected', {data: 'new user connected'});
           });
 
-          // // install a listener for when the message button is pressed
-          // $('#driverMessageSend').on('submit', function(event){
-          //   event.preventDefault();  // prevents the page from reloading
-          // });
+          // when the message button is pressed
+          $('#driverMessageSend').on('click', function(event){
+            var self = $(this);
+            data = {
+              "driverMessage1": $('#driverMessage1').val(),
+              "driverMessage2": $('#driverMessage2').val(),
+              "driverMessage3": $('#driverMessage3').val(),
+              "driverMessage4": $('#driverMessage4').val(),
+              "driverMessage5": $('#driverMessage5').val(),
+              "driverMessage6": $('#driverMessage6').val(),
+              "driverMessage7": $('#driverMessage7').val(),
+              "driverMessage8": $('#driverMessage8').val()
+            };
+            
+            socket.emit('sr22_driverMessageSend', data);  // send the letters
+            $('#driverMessage1').select();  // select the first input box
+          });
 
-          // // revieve a broadcast message from the server
-          // socket.on('after connect', function(msg){
-          //   console.log('After connect', msg);
-          // });
+          
+          // when the LED button is pressed
+          $('#driverLEDSend').on('click', function(event){
+            var self = $(this);
+
+            // RGB values are 0-255 as standard
+            var R = 0;
+            var G = 0;
+            var B = 0;
+
+            // figure out what checkbox is checked and update RGB accordingly
+            if ($('#led-red').prop("checked")){
+              R = 255;
+
+            } else if ($('#led-yellow').prop("checked")){
+              R = 255; G = 255;
+
+            } else if ($('#led-green').prop("checked")){
+              G = 255;
+
+            } else if ($('#led-blue').prop("checked")){
+              B = 255;
+
+            } else if ($('#led-white').prop("checked")){
+              R = 255; G = 255; B = 255;
+
+            }
+
+            // now only send something if RGB > 0
+            if ((R + G + B) > 0){
+              data = { "R": R, "G": G, "B": B };
+              socket.emit('sr22_driverLEDSend', data);  // send the color
+            }
+
+            // deselect the colored buttons
+            $('input[name="led-btn"]').prop("checked", false);
+
+          });
+
 
 
         }); // end (document).ready

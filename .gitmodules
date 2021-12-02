@@ -1,0 +1,3 @@
+[submodule "server/Electrical-SR20"]
+	path = server/Electrical-SR20
+	url = https://github.com/msfrt/Electrical-SR20

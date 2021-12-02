@@ -48,8 +48,11 @@ def landing_page():
 
 # s22 page --------------------------------------------------------------------
 
-SR22_DBC_CAN1_FILEPATH = ""
-SR22_DBC_CAN2_FILEPATH = ""
+# file paths to vehicle dbcs. Note, if these are not downloaded after cloning
+# the CANLink repo, cd into Electrical-SR20, then run `git submodule init` and
+# then `git submodule update`
+SR22_DBC_CAN1_FILEPATH = "Electrical-SR20/DBCs/CAN1.dbc"
+SR22_DBC_CAN2_FILEPATH = "Electrical-SR20/DBCs/CAN2.dbc"
 
 
 # loads the dbc files into actual objects
@@ -62,7 +65,7 @@ sr22_dbc_can2 = cantools.database.load_file(SR22_DBC_CAN2_FILEPATH)
 # then all changes are propogated to other clients.
 sr22_current_values = dict()
 
-# renders the page
+# renders the page template
 @app.route("/sr22")
 def sr22_page():
     return render_template("vehicles/sr22.html", vehicles=vehicles)
@@ -70,6 +73,18 @@ def sr22_page():
 # called on page load
 @socketio.on('sr22_connected')
 def handle_my_custom_event(json):
+    print('received json: ' + str(json))
+
+
+# called on driverMessageSend
+@socketio.on('sr22_driverMessageSend')
+def handle_driver_message_send(json):
+    print('received json: ' + str(json))
+
+
+# called on driverLEDSend
+@socketio.on('sr22_driverLEDSend')
+def handle_driver_led_send(json):
     print('received json: ' + str(json))
 
 
