@@ -55,21 +55,28 @@ def accept_connection(conn, addr):
         # read the data
         json = recv(conn)
 
-        example_db = {
-            "sr20": {"id":  0x69, "data": 0xDADABEEF},
-            "sr22": {"id": 0x420, "data": 0xBEEFDAAD}
-            }
+        print(f"{addr} : {json}")
+
+        # example_db = {
+        #     "sr20": [{"bus": "can1", "id":  0x69, "data": [0xD, 0xE, 0xA, 0xD, 0xB, 0xE, 0xE, 0xF]}],
+        #     "sr22": [{"id": 0x420, "data": [0xD, 0xE, 0xA, 0xD, 0xB, 0xE, 0xE, 0xF]}]
+        #     }
 
 
-        # get the datakey that the client is reqesting
-        datakey = json["datakey"]
+        # # get the datakey that the client is reqesting
+        # datakey = json["datakey"]
 
-        send(conn, example_db[datakey])
-
-
+        # send(conn, example_db[datakey])
 
 
 
+def setup_database():
+    # factory function to create the database table if it doesn't exist yet
+    datakey_table = """
+CREATE TABLE datakey(
+
+)
+"""
 
 
 if __name__ == "__main__":
