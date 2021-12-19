@@ -45,6 +45,48 @@ app.jinja_env.auto_reload = True
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 
+# utility functions -----------------------------------------------------------
+
+def handshake_then_die(conn, return_ip=False):
+    """
+    This function, appropriately, does what it says! It handshakes the
+    currently active connection, then closes it (since the car client creates
+    a new connection for every transaction). It resturns true if the handshake
+    was good (that means there's a decent connection)
+    @param conn - the connection object
+    @param return_ip bool - if set to true, the function will return the
+        connection's ip address.
+    @returns boolean - True if the connection is good, False if no connection
+    """
+
+    if conn is None:
+        return False
+
+    try:
+        send(conn, "handshake")
+
+        # set the socket to wait for one second before giving up
+        conn.settimeout(1.0)
+        return_val = recv(conn)
+
+        ip = conn.getpeername()
+
+        # done with the socket, we can close it now
+        conn.shutdown(socket.SHUT_RDWR)
+        conn.close()
+
+        # if good, return the ip or True
+        if return_val == True:
+            return ip if return_ip else True
+
+    except Exception as e:
+        # some sort of error
+        print("There was some sort of error when pinging the client: " + str(e))
+        pass
+
+    return False
+
+
 # index page ------------------------------------------------------------------
 
 # find all of the vehicle pages that we can link to. This will automatically
@@ -58,7 +100,8 @@ for v in vehicles:
 @app.route("/")
 def landing_page():
 
-    # determine what vehicles are currently online HERE
+    # determine what vehicles are currently online here
+    vehicles_online_dict["sr22"] = handshake_then_die(CAR_CONNECT_DICT[SR22_KEY])
 
     return render_template("landing.html", vehicles=vehicles_online_dict)
 
@@ -91,6 +134,14 @@ def sr22_page():
 @socketio.on('sr22_connected')
 def handle_my_custom_event(json):
     print('received json: ' + str(json))
+
+
+# called to check the vehicle status
+@socketio.on('sr22_computerStatusRefresh')
+def sr22_vehicle_status(json):
+    print('received vehicle status request!')
+    ip = handshake_then_die(CAR_CONNECT_DICT[SR22_KEY], return_ip=True)
+    emit('sr22_computerStatus', ip)
 
 
 # called on driverMessageSend

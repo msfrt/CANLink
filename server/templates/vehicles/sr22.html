@@ -13,7 +13,8 @@
     <!-- SocketIO JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
     
-
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
 
     <style type="text/css">
 
@@ -50,6 +51,12 @@
       
       <div class="row text-center">
         <h1 class="h3 mb-1 fw-normal">SR-22 CANLink</h1>
+      </div>
+
+
+      <div class="row text-center">
+        <p class="mb-0">Vehicle computer status: <span id="computerStatus" class="fw-bold">PENDING</span> <a href="#" id="computerStatusRefresh"><i class="bi-arrow-repeat"></i></a></p>
+        <p class="" id="computerIP">&nbsp;</p>
       </div>
 
       <div class="row text-center">
@@ -184,15 +191,57 @@
       <script>
 
 
+        
+
         // this is called a closure. We define an entire funciton *within* another
         // call to a different function. 
         $(document).ready(function(){
           var socket = io();
 
+          // ping the server for the car client status
+          socket.emit('sr22_computerStatusRefresh', true);
+
           // when the page is first loaded and connects to the server
           socket.on('connect', function() {
               socket.emit('sr22_connected', {data: 'new user connected'});
           });
+
+          // tells the server to ping the car client, then their response
+          // updates the computer status on the webpage
+          function verifyAlive(delayInMilliseconds){
+            setTimeout(function() {
+              socket.emit('sr22_computerStatusRefresh', true);  // true just placeholder
+            }, delayInMilliseconds);
+          }
+
+
+          // when the vehicle status refresh button is pressed
+          $('#computerStatusRefresh').on('click', function(event){
+            event.preventDefault();
+
+            // change to pending while we ping the server and the car client
+            $('#computerStatus').text("PENDING").removeClass("text-danger").removeClass("text-success");
+
+            verifyAlive(0);
+          });
+
+          // when the page status is returned, update the value
+          socket.on('sr22_computerStatus', function(ip) {
+            statusElement = $('#computerStatus');
+            ipElement = $('#computerIP');
+            
+            // console.log(ip);
+
+            if (ip == false) {
+              statusElement.text("OFFLINE").removeClass("text-success").addClass("text-danger");
+              ipElement.text("\xa0");  // non-breaking space char code
+            } else {
+              statusElement.text("ONLINE").removeClass("text-danger").addClass("text-success");
+              ipElement.text("IPv4: " + ip);
+            }
+
+          });
+
 
           // when the message button is pressed
           $('#driverMessageSend').on('click', function(event){
@@ -210,6 +259,8 @@
             
             socket.emit('sr22_driverMessageSend', data);  // send the letters
             $('#driverMessage1').select();  // select the first input box
+
+            verifyAlive(5000);
           });
 
           
@@ -249,6 +300,8 @@
             // deselect the colored buttons
             $('input[name="led-btn"]').prop("checked", false);
 
+            verifyAlive(5000);
+            
           });
 
 
