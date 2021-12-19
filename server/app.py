@@ -1,11 +1,24 @@
+#!/bin/python3
+
 from flask import Flask, render_template
 from flask_basicauth import BasicAuth
 from flask_socketio import SocketIO, emit
 import os
 import re
 
+import socket
+import ssl
+
 import can
 import cantools
+
+# import thread module for car clients
+from _thread import *
+import threading
+
+# custom functions allow for the sending and recieving of json data
+from datatransfer import send, recv
+
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -20,6 +33,10 @@ basic_auth = BasicAuth(app)
 # links to SSL keys
 CHAIN_PEM = "ssl/fullchain.pem"
 PRIVATE_KEY = "ssl/privkey.pem"
+
+# for the car connections, NOT the flask webserver
+CAR_CONNECT_HOST = ''           # any host - localhost or external
+CAR_CONNECT_PORT = 6969         # Port to listen on (non-privileged ports are > 1023)
 
 
 app.config['TESTING'] = True
@@ -51,8 +68,8 @@ def landing_page():
 # file paths to vehicle dbcs. Note, if these are not downloaded after cloning
 # the CANLink repo, cd into Electrical-SR20, then run `git submodule init` and
 # then `git submodule update`
-SR22_DBC_CAN1_FILEPATH = "Electrical-SR20/DBCs/CAN1.dbc"
-SR22_DBC_CAN2_FILEPATH = "Electrical-SR20/DBCs/CAN2.dbc"
+SR22_DBC_CAN1_FILEPATH = "/home/sparty/Electrical-SR20/DBCs/CAN1.dbc"
+SR22_DBC_CAN2_FILEPATH = "/home/sparty/Electrical-SR20/DBCs/CAN2.dbc"
 
 
 # loads the dbc files into actual objects
@@ -79,7 +96,47 @@ def handle_my_custom_event(json):
 # called on driverMessageSend
 @socketio.on('sr22_driverMessageSend')
 def handle_driver_message_send(json):
-    print('received json: ' + str(json))
+    #print('received json: ' + str(json))
+
+    # create an empty dict with the actual signal names from the DBC
+    data_dict = {"USER_driverMessageChar" + str(i): 0 for i in range(0, 8)}
+    
+    # if there was a character input, convert it to it's ascii value with ord()
+    for input_name, char in json.items():
+        if char != '':
+            signal_name = "USER_driverMessageChar" + str(int(input_name[-1])-1)
+            data_dict[signal_name] = ord(char)
+
+    # driver display message
+    msg = sr22_dbc_can2.get_message_by_name("USER_12")
+
+    # raw can stuff, ready to send!
+    msg_id = msg.frame_id
+    msg_data_encoded = msg.encode(data_dict)
+    msg_data_encoded_list = [int(byte) for byte in msg_data_encoded]
+    print(msg_data_encoded_list)
+
+    # returns a list of messages to send (although this is a single message, we
+    # aim to keep the formatting consistant)
+    return_data = [{"bus":"can2", "id":msg_id, "data": msg_data_encoded_list}]
+
+    # get the open socket
+    conn = CAR_CONNECT_DICT[SR22_KEY]
+
+    if conn is not None:
+        # send the message data
+        send(conn, return_data)
+
+        conn.shutdown(socket.SHUT_RDWR)
+        conn.close()
+
+        CAR_CONNECT_DICT[SR22_KEY] = None
+
+    else:
+
+        print("Car is not connected!")
+
+
 
 
 # called on driverLEDSend
@@ -89,13 +146,110 @@ def handle_driver_led_send(json):
 
 
 # s23 page --------------------------------------------------------------------
-
 @app.route("/sr23")
 def sr23_page():
     return render_template("vehicles/sr23.html", vehicles=vehicles)
 
 
+# car-connect -----------------------------------------------------------------
+
+# this dictionary will hold the car keys, then their connection objects. You
+# should add every potential connection to this dictionary in the form of
+# {"key_name": None}, as when a connection is made, the key will be checked
+# to see if this is an actual connection, or some malicious connection. For a
+# valid connection, the dict will look like this: 
+# {"datakey": conn_obj }
+SR22_KEY = "sr22"
+CAR_CONNECT_DICT = {SR22_KEY: None, "othercar_key": None}
+
+def car_connect_listener():
+    """
+    This function acts *almost* like an entirely different program. It has a
+    loop that listens for incoming socket connections from cars. When the
+    connections are made, it calls the handler thread to store the connections
+    """
+    
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((CAR_CONNECT_HOST, CAR_CONNECT_PORT))
+        sock.listen(5)
+
+        # TLS server context - load public and private keys generated
+        # by Let's Encrypt
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(CHAIN_PEM, PRIVATE_KEY)
+
+        # wrap the unsecure socket in TLS
+        with context.wrap_socket(sock, server_side=True) as ssock:
+            
+            while True:
+                conn, addr = ssock.accept()  # accepts conn like regular socket
+
+                # start a new thread to handle this connection
+                params = (conn, addr)
+                start_new_thread(accept_car_connection, params)
+
+
+def accept_car_connection(conn, addr):
+    """
+    Accepts the connection, verifies that it's from a valid source, then
+    stores it for later use
+    """
+    
+    # read the data
+    json = recv(conn)
+
+    print(f"{addr} : {json}")
+
+    # make sure that the datakey was sent!
+    try:
+        datakey = json["datakey"]
+    except KeyError:
+        # bad connection
+        conn.shutdown(socket.SHUT_RDWR)
+        conn.close()
+        return
+
+    # if there's new valid connection
+    if datakey in CAR_CONNECT_DICT.keys():
+        
+
+        # if there's alredy a connection there, try to end it and replace it
+        # with this new, fresh, and clean one
+        if CAR_CONNECT_DICT[datakey] is not None:
+
+            # try to end it
+            try:
+                CAR_CONNECT_DICT[datakey].shutdown(socket.SHUT_RDWR)
+                CAR_CONNECT_DICT[datakey].close()
+
+            # some weird error with the socket. ANyways, continue fresh
+            except:
+                pass
+
+            # set to None to delete the object
+            finally:
+                CAR_CONNECT_DICT[datakey] = None
+
+        # add the new connection
+        CAR_CONNECT_DICT[datakey]= conn
+
+
+        print(CAR_CONNECT_DICT)
+
+    # if the connection is invalid
+    else:
+        return
+        
+
+
+
+
 if __name__ == '__main__':
+
+    # launch a new thread into the server_client_main function
+    params = ()
+    start_new_thread(car_connect_listener, params)
+
     ssl_context = (CHAIN_PEM, PRIVATE_KEY)
     socketio.run(app=app, host='0.0.0.0', ssl_context=ssl_context)
 
