@@ -1,3 +1,5 @@
+#!/bin/python3
+
 import socket
 import ssl
 import time
@@ -48,6 +50,14 @@ while True:
         json_data = recv(conn)
         print(json_data)
 
+        # if the server just wanted to do a handshake, that's fine, just send back true
+        # and continue on with a new socket connection
+        if json_data == "handshake":
+            print("server pinged me!")
+            send(conn, True)
+            continue
+
+
         # iterates through every message that the server returned
         for msg_info in json_data:
 
@@ -63,14 +73,21 @@ while True:
             # print(bus_name)
             # print(msg_id)
             # print(msg_data)
-            
-            # creates the message object that can be sent
-            msg = can.Message(arbitration_id=msg_id, data=msg_data, is_extended_id=False)
 
-            if bus_name == "can1":
-                can1.send(msg)
-            elif bus_name == "can2":
-                can2.send(msg)
+            try:
+            
+                # creates the message object that can be sent
+                msg = can.Message(arbitration_id=msg_id, data=msg_data, is_extended_id=False)
+
+                if bus_name == "can1":
+                    can1.send(msg)
+                elif bus_name == "can2":
+                    can2.send(msg)
+
+            except Exception as e:
+
+                print("There was an error sending the message")
+                continue
 
 
 
